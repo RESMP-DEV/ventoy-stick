@@ -1,0 +1,41 @@
+# macOS noise
+.DS_Store
+
+# semantic index scratch
+.sindexer/
+
+# ISOs (large binaries; verified against releases.ubuntu.com and copied to the
+# stick by tools/assemble-stick.sh) and the legacy ISO backup
+isos/
+backup/
+
+# vendored router source checkout and packaging output
+build/
+dist/
+
+# captured diagnostics from installs/deploys (contain copies of profiles,
+# secrets.tar, and generated seeds)
+diagnostics/
+
+# static Linux binaries (downloaded release artifacts; checksums of their
+# source tarballs are committed in stick/provision/TARBALL-SHA256SUMS.txt)
+stick/provision/bin/
+
+# REAL profiles: identity, ssh pubkeys, secrets.tar. The committed example
+# profile documents the shape.
+stick/provision/profiles/*
+!stick/provision/profiles/example/
+
+# real policy file (internal); example placeholder is committed
+stick/provision/files/AGENTS-core.md
+
+# real router configs (contain a private Azure endpoint); examples are committed
+stick/provision/files/ccr/config.json
+stick/provision/files/ccr/glm-workers.json
+
+# generated autoinstall seeds + boot menu (contain the crypted initial password
+# and identity); regenerate with tools/make-profile.sh --refresh-only
+stick/ventoy/
+
+# python test caches
+__pycache__/

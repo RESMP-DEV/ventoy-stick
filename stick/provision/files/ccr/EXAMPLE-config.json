@@ -1,0 +1,52 @@
+{
+  "Providers": [
+    {
+      "name": "zai",
+      "api_base_url": "https://api.z.ai/api/anthropic/v1",
+      "api_key": "${CCR_ZAI_API_KEY}",
+      "protocol": "anthropic",
+      "auth_header": "authorization",
+      "models": [
+        "glm-5.3"
+      ],
+      "honor_ratelimit_headers": false
+    },
+    {
+      "name": "azure",
+      "api_base_url": "https://YOUR-ENDPOINT.openai.azure.com/openai/v1",
+      "api_key": "${CCR_AZURE_API_KEY}",
+      "extra_headers": {
+        "api-key": "${CCR_AZURE_API_KEY}"
+      },
+      "protocol": "responses",
+      "models": [
+        "gpt-6-astra"
+      ]
+    },
+    {
+      "name": "minimax",
+      "api_base_url": "https://api.minimax.io/anthropic/v1",
+      "api_key": "${CCR_MINIMAX_API_KEY}",
+      "protocol": "anthropic",
+      "models": [
+        "MiniMax-M3"
+      ]
+    }
+  ],
+  "Router": {
+    "default": "zai,glm-5.3",
+    "tiers": [
+      "zai,glm-5.3"
+    ],
+    "forceNonStreaming": false,
+    "ignoreDirect": false,
+    "modelAliases": {
+      "gpt-6-astra": "azure,gpt-6-astra",
+      "glm-5.3": "zai,glm-5.3",
+      "MiniMax-M3": "minimax,MiniMax-M3"
+    }
+  },
+  "HOST": "127.0.0.1",
+  "PORT": 3456,
+  "API_TIMEOUT_MS": 180000
+}

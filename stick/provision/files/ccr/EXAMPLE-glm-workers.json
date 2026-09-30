@@ -1,0 +1,26 @@
+{
+  "Providers": [
+    {
+      "name": "zai",
+      "api_base_url": "https://api.z.ai/api/v1",
+      "api_key": "${CCR_ZAI_API_KEY}",
+      "protocol": "responses",
+      "auth_header": "authorization",
+      "models": [
+        "glm-5.3-flashx"
+      ],
+      "honor_ratelimit_headers": false
+    }
+  ],
+  "Router": {
+    "default": "zai,glm-5.3-flashx",
+    "tiers": [
+      "zai,glm-5.3-flashx"
+    ],
+    "ignoreDirect": false,
+    "forceNonStreaming": false
+  },
+  "HOST": "127.0.0.1",
+  "PORT": 3457,
+  "API_TIMEOUT_MS": 180000
+}
