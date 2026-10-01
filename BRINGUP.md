@@ -134,6 +134,36 @@ any manual repair:
   via the `multi-user.target.wants` symlink, which the provisioner creates.
 - CUDA toolkit install (`nvidia-cuda-toolkit`) takes several minutes; the
   profile can skip it (`ENABLE_CUDA=0`) when only GPU serving is needed.
+- subiquity can write netplan with NO `dhcp4` key at all (seen 2026-09-30 on
+  the Strix G16, whose NIC gained carrier 5 min into the install). The box
+  boots IPv6-only and every apt stage fails, because Ubuntu's archive is
+  IPv4-only — the errors look like package/repo problems, not network
+  problems. The provisioner now guards this: no default IPv4 route + no
+  `dhcp4:` in the installer netplan → backup, add `dhcp4: true` to every
+  ethernet stanza, `netplan apply`. Manual repair is the same edit.
+- `zerotier-one` is NOT in the Ubuntu archive; a fresh image has no ZeroTier
+  repo and the bare `apt-get install` fails with "Unable to locate package"
+  (2026-09-30; the B550 only worked because its repo had been added by hand).
+  The provisioner now adds `download.zerotier.com/debian/noble` (keyring
+  bundled at `files/zerotier-debian-package-key.gpg` on the stick) when the
+  package has no candidate. "noble" is ZeroTier's newest suite and installs
+  fine on resolute (26.04).
+- sccache wrapper ordering: `~/.cargo/config.toml` (absolute
+  `/usr/local/bin/sccache` wrapper) is written by the build-cache stage, but
+  the symlink is deferred when baseline has not yet installed sccache. If run
+  #1's baseline fails (e.g. the v6-only boot above), run #2's baseline cargo
+  installs die with `could not execute process ... (No such file or
+  directory)`. The provisioner now re-creates the symlink before any cargo
+  use whenever `~/.local/bin/sccache` exists.
+- Do not remove the stick until `/root/BOOTSTRAP-OK` exists: the remaining
+  stages (baseline leftovers, CUDA, ZeroTier membership check, smokes) run
+  from the stick's payload on subsequent boots. Pulling it early means
+  re-inserting and power-cycling later (never warm-reboot with the stick
+  inserted — that re-boots Ventoy and re-wipes; power off, then power on).
+- Finding a box that has no IPv4 at all: ping sweeps of the /24 will not see
+  it. Enumerate the L2 segment with IPv6 multicast instead —
+  `ping6 -c2 -I en0 ff02::1` lists every neighbor's link-local address, and
+  ssh works directly on `fe80::…%en0` (how the Strix was found, 2026-09-30).
 
 ## 6. Out of stick scope
 

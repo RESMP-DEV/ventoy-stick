@@ -312,6 +312,93 @@ EOF
     as_user git config --global user.email "$GIT_EMAIL" || true
     as_user git config --global init.defaultBranch main || true
 
+    # 2026-09-30 Strix bring-up: if an earlier run installed sccache via
+    # baseline but build-cache had not run yet, ~/.cargo/config.toml points at
+    # /usr/local/bin/sccache which does not exist, and every cargo install
+    # dies with "could not execute process ... (No such file or directory)".
+    # Re-create the link before any cargo use; build-cache re-asserts it.
+    if [ -x "$TARGET_HOME/.local/bin/sccache" ]; then
+        ln -sfn "$TARGET_HOME/.local/bin/sccache" /usr/local/bin/sccache
+    fi
+
+    # 2026-09-30 Strix bring-up: subiquity can write netplan with NO dhcp4
+    # (observed when the NIC gained carrier 5 min into the install), leaving
+    # the box IPv6-only -- Ubuntu's archive is v4-only, so every apt stage
+    # fails with confusing downstream errors. If there is no default IPv4
+    # route and the installer netplan lacks a dhcp4 key, add dhcp4: true to
+    # every ethernet stanza, then apply.
+    if [ "$MODE" != chrooted ] && ! ip -4 route show default 2>/dev/null | grep -q . && \
+       [ -f /etc/netplan/00-installer-config.yaml ] && \
+       grep -q "^network:" /etc/netplan/00-installer-config.yaml && \
+       ! grep -qE "^[[:space:]]*dhcp4:" /etc/netplan/00-installer-config.yaml; then
+        cp -a /etc/netplan/00-installer-config.yaml \
+            "/etc/netplan/00-installer-config.yaml.bak-$(date +%Y%m%d-%H%M%S)"
+        if python3 - <<'PYEOF'
+import re
+path = "/etc/netplan/00-installer-config.yaml"
+lines = open(path).read().splitlines()
+out, i, n = [], 0, len(lines)
+
+def indent(s):
+    return len(s) - len(s.lstrip(" "))
+
+while i < n:
+    line = lines[i]
+    m = re.match(r"^(\s*)ethernets:\s*$", line)
+    if m and indent(line) == 2:
+        base, iface = indent(line), indent(line) + 2
+        out.append(line)
+        i += 1
+        while i < n:
+            l2 = lines[i]
+            if l2.strip() and indent(l2) <= base:
+                break
+            if l2.strip() and indent(l2) == iface and not l2.lstrip().startswith("#"):
+                out.append(l2)
+                i += 1
+                stanza = []
+                while i < n and (not lines[i].strip() or indent(lines[i]) > iface):
+                    stanza.append(lines[i])
+                    i += 1
+                if not any(re.match(r"^\s*dhcp4:", s) for s in stanza):
+                    trail = 0
+                    while trail < len(stanza) and not stanza[len(stanza) - 1 - trail].strip():
+                        trail += 1
+                    body = len(stanza) - trail
+                    out.extend(stanza[:body])
+                    out.append(" " * (iface + 2) + "dhcp4: true")
+                    out.extend(stanza[body:])
+                else:
+                    out.extend(stanza)
+                continue
+            out.append(l2)
+            i += 1
+        continue
+    out.append(line)
+    i += 1
+open(path, "w").write("\n".join(out) + "\n")
+PYEOF
+        then
+            if netplan generate >/dev/null 2>&1; then
+                netplan apply
+                log "netplan dhcp4 guard applied (backup beside the original)"
+                for _ in $(seq 1 15); do
+                    ip -4 route show default 2>/dev/null | grep -q . && break
+                    sleep 2
+                done
+                if ip -4 route show default 2>/dev/null | grep -q .; then
+                    log "ACCEPTANCE: default IPv4 route present after netplan fix"
+                else
+                    log "WARN: still no default IPv4 route after netplan fix (v6-only network?)"
+                fi
+            else
+                log "ERROR: netplan dhcp4 guard produced an invalid config; NOT applied"
+            fi
+        else
+            log "ERROR: netplan dhcp4 guard edit failed; NOT applied"
+        fi
+    fi
+
     if [ "$MODE" != chrooted ] && [ "$DO_BASELINE" = 1 ] && [ -f "$SCRIPT_DIR/files/install-baseline-tools.sh" ]; then
         stage baseline
         log "AlphaHENG baseline tools (30 minute limit, HOME=$TARGET_HOME)"
@@ -511,6 +598,24 @@ SETTINGSEOF
         if [ "${ENABLE_ZEROTIER:-0}" = 1 ] && [ -n "${ZT_NETWORK_ID:-}" ]; then
             stage zerotier
             ZT_STATUS=failed
+            # 2026-09-30: zerotier-one is NOT in the Ubuntu archive; on a
+            # fresh image the bare install below fails with "Unable to locate
+            # package zerotier-one". Add the official repo when the package
+            # has no candidate version. Keyring is bundled on the stick
+            # (files/zerotier-debian-package-key.gpg); "noble" is ZeroTier's
+            # newest suite and installs fine on resolute (26.04) -- proven on
+            # the B550 and the Strix.
+            if ! apt-cache policy zerotier-one 2>/dev/null | grep -qE "Candidate: *[0-9]"; then
+                if [ -f "$SCRIPT_DIR/files/zerotier-debian-package-key.gpg" ]; then
+                    install -D -m 644 "$SCRIPT_DIR/files/zerotier-debian-package-key.gpg" \
+                        /usr/share/keyrings/zerotier-debian-package-key.gpg
+                    echo "deb [signed-by=/usr/share/keyrings/zerotier-debian-package-key.gpg] http://download.zerotier.com/debian/noble noble main" \
+                        > /etc/apt/sources.list.d/zerotier.list
+                    apt-get update -qq >/dev/null 2>&1 || log "WARN: apt update after adding ZeroTier repo failed"
+                else
+                    log "WARN: zerotier keyring missing from stick payload; trying install without repo"
+                fi
+            fi
             if command -v zerotier-cli >/dev/null 2>&1 || \
                DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
                    -o Acquire::Retries=3 zerotier-one; then
