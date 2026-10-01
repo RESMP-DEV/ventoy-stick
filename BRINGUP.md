@@ -106,6 +106,8 @@ ssh compute 'systemctl --user is-active ccr-main ccr-glm-workers; curl -sf http:
 ssh compute 'ccache -p | grep -E "max_size|inode_cache"; sccache --show-stats | grep -E "Max cache size|Cache location"'
 ssh compute 'zerotier-cli listnetworks | tail -1'
 ssh compute 'head -3 ~/AGENTS.md; ls ~/.claude/settings.json ~/.local/bin/claude-ccr'
+ssh compute 'iface=$(ls /sys/class/net | grep -E "^e" | head -1); sudo -n ethtool "$iface" | grep -i "Wake-on"'
+# expect: Supports Wake-on: pumbg / Wake-on: g
 ```
 
 All green means the machine is remote-ready for bounded SSH compute work.
@@ -160,6 +162,15 @@ any manual repair:
   from the stick's payload on subsequent boots. Pulling it early means
   re-inserting and power-cycling later (never warm-reboot with the stick
   inserted — that re-boots Ventoy and re-wipes; power off, then power on).
+- WoL needs netplan, not ethtool: the NIC boots with `Wake-on: d` on every
+  fresh boot, and `ethtool -s <iface> wol g` set by hand is lost at the next
+  reboot (2026-10-01, Strix). The durable form is `wakeonlan: true` on the
+  ethernet stanza, which renders `WakeOnLan=magic` into the generated
+  networkd `.link` unit. The netplan posture guard now adds it to every
+  ethernet stanza alongside the dhcp4 repair. Magic packets must also leave
+  the right Mac interface (bind the wired leg, not the default route), and
+  the BIOS must permit PCI-E wake from S5 (untested on the modified Strix
+  BIOS).
 - Finding a box that has no IPv4 at all: ping sweeps of the /24 will not see
   it. Enumerate the L2 segment with IPv6 multicast instead —
   `ping6 -c2 -I en0 ff02::1` lists every neighbor's link-local address, and

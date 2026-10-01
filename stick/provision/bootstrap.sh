@@ -321,26 +321,42 @@ EOF
         ln -sfn "$TARGET_HOME/.local/bin/sccache" /usr/local/bin/sccache
     fi
 
-    # 2026-09-30 Strix bring-up: subiquity can write netplan with NO dhcp4
-    # (observed when the NIC gained carrier 5 min into the install), leaving
-    # the box IPv6-only -- Ubuntu's archive is v4-only, so every apt stage
-    # fails with confusing downstream errors. If there is no default IPv4
-    # route and the installer netplan lacks a dhcp4 key, add dhcp4: true to
-    # every ethernet stanza, then apply.
-    if [ "$MODE" != chrooted ] && ! ip -4 route show default 2>/dev/null | grep -q . && \
-       [ -f /etc/netplan/00-installer-config.yaml ] && \
-       grep -q "^network:" /etc/netplan/00-installer-config.yaml && \
-       ! grep -qE "^[[:space:]]*dhcp4:" /etc/netplan/00-installer-config.yaml; then
-        cp -a /etc/netplan/00-installer-config.yaml \
-            "/etc/netplan/00-installer-config.yaml.bak-$(date +%Y%m%d-%H%M%S)"
-        if python3 - <<'PYEOF'
+    # 2026-09-30 Strix bring-up: two netplan postures the installer leaves out.
+    #  (a) subiquity can write netplan with NO dhcp4 (observed when the NIC
+    #      gained carrier 5 min into the install), leaving the box IPv6-only --
+    #      Ubuntu's archive is v4-only, so every apt stage fails with confusing
+    #      downstream errors. Only repaired when there is also no default IPv4
+    #      route, so a statically configured box is never handed DHCP.
+    #  (b) no wakeonlan key: r8169 comes up with `Wake-on: d` on every boot, so
+    #      a remote box cannot be woken from S5. `wakeonlan: true` is what
+    #      persists it -- it renders WakeOnLan=magic into the networkd .link
+    #      unit; `ethtool -s ... wol g` alone is lost at the next boot.
+    if [ "$MODE" != chrooted ] && [ -f /etc/netplan/00-installer-config.yaml ] && \
+       grep -q "^network:" /etc/netplan/00-installer-config.yaml; then
+        want=""
+        if ! ip -4 route show default 2>/dev/null | grep -q . && \
+           ! grep -qE "^[[:space:]]*dhcp4:" /etc/netplan/00-installer-config.yaml; then
+            want="dhcp4"
+        fi
+        if ! grep -qE "^[[:space:]]*wakeonlan:" /etc/netplan/00-installer-config.yaml; then
+            want="${want:+$want,}wakeonlan"
+        fi
+        if [ -n "$want" ]; then
+            cp -a /etc/netplan/00-installer-config.yaml \
+                "/etc/netplan/00-installer-config.yaml.bak-$(date +%Y%m%d-%H%M%S)"
+            if NETPLAN_WANT="$want" python3 - <<'PYEOF'
+import os
 import re
+
 path = "/etc/netplan/00-installer-config.yaml"
+want = os.environ.get("NETPLAN_WANT", "").split(",")
 lines = open(path).read().splitlines()
-out, i, n = [], 0, len(lines)
+out, i, n, added = [], 0, len(lines), []
+
 
 def indent(s):
     return len(s) - len(s.lstrip(" "))
+
 
 while i < n:
     line = lines[i]
@@ -354,22 +370,27 @@ while i < n:
             if l2.strip() and indent(l2) <= base:
                 break
             if l2.strip() and indent(l2) == iface and not l2.lstrip().startswith("#"):
+                name = l2.strip().rstrip(":")
                 out.append(l2)
                 i += 1
                 stanza = []
                 while i < n and (not lines[i].strip() or indent(lines[i]) > iface):
                     stanza.append(lines[i])
                     i += 1
-                if not any(re.match(r"^\s*dhcp4:", s) for s in stanza):
-                    trail = 0
-                    while trail < len(stanza) and not stanza[len(stanza) - 1 - trail].strip():
-                        trail += 1
-                    body = len(stanza) - trail
-                    out.extend(stanza[:body])
-                    out.append(" " * (iface + 2) + "dhcp4: true")
-                    out.extend(stanza[body:])
-                else:
-                    out.extend(stanza)
+                add = []
+                if "dhcp4" in want and not any(re.match(r"^\s*dhcp4:", s) for s in stanza):
+                    add.append("dhcp4: true")
+                if "wakeonlan" in want and not any(re.match(r"^\s*wakeonlan:", s) for s in stanza):
+                    add.append("wakeonlan: true")
+                trail = 0
+                while trail < len(stanza) and not stanza[len(stanza) - 1 - trail].strip():
+                    trail += 1
+                body = len(stanza) - trail
+                out.extend(stanza[:body])
+                for a in add:
+                    out.append(" " * (iface + 2) + a)
+                    added.append("%s: %s" % (name, a))
+                out.extend(stanza[body:])
                 continue
             out.append(l2)
             i += 1
@@ -377,25 +398,31 @@ while i < n:
     out.append(line)
     i += 1
 open(path, "w").write("\n".join(out) + "\n")
+print("; ".join(added) if added else "no stanzas needed changes")
 PYEOF
-        then
-            if netplan generate >/dev/null 2>&1; then
-                netplan apply
-                log "netplan dhcp4 guard applied (backup beside the original)"
-                for _ in $(seq 1 15); do
-                    ip -4 route show default 2>/dev/null | grep -q . && break
-                    sleep 2
-                done
-                if ip -4 route show default 2>/dev/null | grep -q .; then
-                    log "ACCEPTANCE: default IPv4 route present after netplan fix"
+            then
+                if netplan generate >/dev/null 2>&1; then
+                    netplan apply
+                    log "netplan posture guard applied ($want; backup beside the original)"
+                    case "$want" in
+                    *dhcp4*)
+                        for _ in $(seq 1 15); do
+                            ip -4 route show default 2>/dev/null | grep -q . && break
+                            sleep 2
+                        done
+                        if ip -4 route show default 2>/dev/null | grep -q .; then
+                            log "ACCEPTANCE: default IPv4 route present after netplan fix"
+                        else
+                            log "WARN: still no default IPv4 route after netplan fix (v6-only network?)"
+                        fi
+                        ;;
+                    esac
                 else
-                    log "WARN: still no default IPv4 route after netplan fix (v6-only network?)"
+                    log "ERROR: netplan posture guard produced an invalid config; NOT applied"
                 fi
             else
-                log "ERROR: netplan dhcp4 guard produced an invalid config; NOT applied"
+                log "ERROR: netplan posture guard edit failed; NOT applied"
             fi
-        else
-            log "ERROR: netplan dhcp4 guard edit failed; NOT applied"
         fi
     fi
 
