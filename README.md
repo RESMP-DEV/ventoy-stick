@@ -38,6 +38,7 @@ Three phases, none of which require interactive input on the target:
 | Path | What |
 | --- | --- |
 | `stick/README.md` | The stick's own documentation: flows, profiles, secrets, caveats |
+| `stick/windows-setup/` | Windows-native baseline/policy setup and staged Windows Hello replacement |
 | `stick/provision/bootstrap.sh` | The provisioner (first boot / desktop flow) |
 | `stick/provision/files/` | Baseline installer, router config examples, model catalog, policy file slot |
 | `stick/provision/profiles/example/` | Documented example profile (real profiles are gitignored) |
@@ -103,6 +104,9 @@ touching identity, keys, or credentials.
   [stick/README.md](stick/README.md).
 - **Flow B: desktop/manual.** Boot the desktop ISO, install by hand, then
   `sudo bash <stick>/provision/bootstrap.sh` does everything else.
+- **Windows drive flow.** In Windows, run `windows-setup\SETUP.bat` for tools
+  and policy files. The password and Windows Hello scripts are deliberately
+  staged: prove the new local-account password before disabling Hello.
 
 ## Security model
 
