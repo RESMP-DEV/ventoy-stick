@@ -37,12 +37,14 @@ df -h "$MNT" 2>/dev/null || true
 echo "== rsync stick tree (with --delete; ISOs and SHA256SUMS are excluded so they survive) =="
 rsync -rlt --delete --exclude .DS_Store --exclude MANIFEST.sha256 \
     --exclude '/logs/' --exclude '/.fseventsd/' --exclude '/.Spotlight-V100/' --exclude '/.Trashes/' \
+    --exclude '/windows-setup/logs/' --exclude '/windows-setup/*.reg' \
     --exclude '*.iso' --exclude 'SHA256SUMS' \
     "$ROOT/stick/" "$MNT/"
 
 echo "== manifest =="
 ( cd "$MNT" && find . -type f -not -name MANIFEST.sha256 \
     -not -path './logs/*' -not -path './.fseventsd/*' -not -path './.Spotlight-V100/*' -not -path './.Trash*' \
+    -not -path './windows-setup/logs/*' -not -path './windows-setup/*.reg' \
     -not -name .DS_Store -print0 | xargs -0 $H ) > "$MNT/MANIFEST.sha256"
 echo "manifest entries: $(wc -l < "$MNT/MANIFEST.sha256" | tr -d ' ')"
 

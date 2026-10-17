@@ -1,0 +1,9 @@
+codex-x86_64.exe:
+  release: openai/codex rust-v0.154.0
+  asset: codex-x86_64-pc-windows-msvc.exe
+
+ccr-rust-x86_64.exe:
+  source: RESMP-DEV/ccr-rust
+  revision: 3d07a5a
+  features: dashboard,gp
+  build_patches: rustls instead of OpenSSL; portable pyright links; sindexer omitted on Windows

@@ -18,8 +18,47 @@ The normal path:
    - `%USERPROFILE%\AGENTS.md`
    - `%USERPROFILE%\.codex\AGENTS.md`
    - `%USERPROFILE%\.claude\CLAUDE.md`, an `@~/AGENTS.md` import stub
-3. Prints `SETUP_EXIT_CODE=0` on success. Reopen Windows Terminal afterward so
+3. Installs pinned native Windows binaries:
+   - Codex CLI `rust-v0.154.0`
+   - RESMP-DEV `ccr-rust` built from `3d07a5a`
+4. Unpacks the default profile credentials into dedicated homes:
+   - `%USERPROFILE%\.codex-ccr`
+   - `%USERPROFILE%\.ccr-ventoy`
+5. Installs these aliases under `%LOCALAPPDATA%\VentoyTools\bin`:
+   - `codex-ccr`, which starts CCR if needed, sets the dedicated Codex home,
+     and runs profile `ccr`
+   - `ccr-main`, `ccr-glm-workers`, and `ccr-healthcheck`
+   - `ccr-smoke`
+6. Validates both CCR configs, starts both listeners, installs per-user Startup
+   shortcuts, and runs the authorized model-catalog healthcheck.
+7. Prints `SETUP_EXIT_CODE=0` on success. Reopen Windows Terminal afterward so
    refreshed PATH entries take effect.
+
+A real completion smoke is opt-in because it spends a model request:
+
+```bat
+SETUP.bat -Smoke
+```
+
+The smoke requires the Codex final message to equal a generated marker exactly.
+
+Setup writes detailed logs to:
+
+- `%LOCALAPPDATA%\VentoyTools\logs\setup-<timestamp>.log`
+- `%LOCALAPPDATA%\VentoyTools\logs\setup-latest.json`
+- `windows-setup\logs\` on the Ventoy drive, when that volume is writable
+
+Command output is redacted for API keys, bearer tokens, and common token field
+names before it reaches these logs. Each CCR listener also writes
+`ccr-main.out.log`, `ccr-main.err.log`, `ccr-workers.out.log`, and
+`ccr-workers.err.log` in the same local log directory.
+
+Policy handling is deliberately non-destructive. Existing `AGENTS.md`,
+`.codex\AGENTS.md`, `.claude\CLAUDE.md`, `.codex`, and
+`.claude-code-router` files are never replaced. The CCR Codex installation
+uses a separate `.codex-ccr` home, so a repository/workspace `AGENTS.md`
+remains the controlling local policy and your existing global configuration is
+not repointed.
 
 Use `SETUP.bat -SkipTools` for policy only, or `SETUP.bat -SkipPolicy` for
 tools only. The public Git checkout contains only the example policy; the

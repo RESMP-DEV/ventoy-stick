@@ -21,6 +21,11 @@ diagnostics/
 # source tarballs are committed in stick/provision/TARBALL-SHA256SUMS.txt)
 stick/provision/bin/
 
+# Pinned Windows binaries; checksums remain tracked
+stick/windows-setup/bin/*
+!stick/windows-setup/bin/BINARIES.sha256
+!stick/windows-setup/bin/BINARIES-provenance.txt
+
 # REAL profiles: identity, ssh pubkeys, secrets.tar. The committed example
 # profile documents the shape.
 stick/provision/profiles/*

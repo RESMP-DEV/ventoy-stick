@@ -104,9 +104,11 @@ touching identity, keys, or credentials.
   [stick/README.md](stick/README.md).
 - **Flow B: desktop/manual.** Boot the desktop ISO, install by hand, then
   `sudo bash <stick>/provision/bootstrap.sh` does everything else.
-- **Windows drive flow.** In Windows, run `windows-setup\SETUP.bat` for tools
-  and policy files. The password and Windows Hello scripts are deliberately
-  staged: prove the new local-account password before disabling Hello.
+- **Windows drive flow.** In Windows, run `windows-setup\SETUP.bat` for tools,
+  policy files, pinned Codex and CCR binaries, credentials, aliases, listener
+  startup, healthcheck, and redacted setup logs. The password and Windows Hello
+  scripts are deliberately staged: prove the new local-account password before
+  disabling Hello.
 
 ## Security model
 
